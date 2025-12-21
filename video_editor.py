@@ -543,16 +543,6 @@ def run(args: argparse.Namespace) -> int:
         return 2
 
 
-PYCHARM_DEFAULTS = [
-    "--start_mode", "sync",
-    "--video", r"./input/W4 - 142.5.mp4", "--start", "10.45", "--label", "W4",
-    "--video", r"./input/W5 - 142.5.mp4", "--start", "11.45", "--label", "W5",
-    "--output", r"./output/squat_comparison_2.mp4",
-    "--audio", "video2",
-    "--fps", "60",
-    "--overwrite",
-]
-
 INTERACTIVE_PROMPT = False
 
 
