@@ -35,6 +35,13 @@ This log tracks incremental Phase 0 work. Each entry records what changed, why, 
 - **Example check:** `python -m unittest tests.test_ingest` now covers rotated frames supplied as 2x1 nested lists to verify 90° normalization/timestamp mapping and mocks ffmpeg + numpy to exercise the decode path and error messaging when numpy is absent.
 - **Achieved:** We can iterate decoded frames (supplied externally or via ffmpeg) with correct timestamps and normalized orientation, ready to plug in OpenCV/ffmpeg decoding in a later step.
 - **Next step:** Thread normalization through pose extraction and overlay mapping, add real decode wiring when dependencies are available, and build small end-to-end smoke tests.
+
+### 2025-12-21 — Pose cache format
+- **Why:** Pose extraction is expensive; we need a debuggable cache keyed by video hash and pose config to avoid redundant runs and keep provenance clear.
+- **What:** Added JSONL cache utilities (`vision.cache`) with `PoseLandmark`/`PoseFrame` dataclasses, SHA-256 video hashing, cache filename/path builders, and save/load helpers. No external dependencies are required.
+- **Example check:** `python -m unittest tests.test_pose_cache` writes two frames to a temp cache and reads them back, ensuring equality and verifying the cache filename embeds the pose cache key.
+- **Achieved:** We now have a reusable cache format ready for the upcoming pose wrapper, enabling repeatable runs and easy inspection during tuning.
+- **Next step:** Implement the pose extraction wrapper to populate the cache using the frame iterator + normalization helpers, then propagate cached outputs into signals/rep detection.
 ## Next steps
 1. Implement `io/ingest.py` with ffprobe helpers (rotation, fps, duration) and a timestamped frame iterator contract.
 2. Define data models in `config.py` (e.g., VideoSpec, PoseConfig) and shared types.
