@@ -15,6 +15,12 @@ This log tracks incremental Phase 0 work. Each entry records what changed, why, 
 - Created `pyproject.toml` for package metadata (no heavy dependencies declared yet).
 - This keeps code organized for upcoming implementations (ffprobe helpers, pose wrapper, signal generation).
 
+### 2025-12-21 — Video metadata probe + shared configs
+- **Why:** We need reliable, rotation-aware metadata before decoding frames so downstream steps (pose extraction, overlays) know the orientation, frame cadence, and expected timestamps.
+- **What:** Implemented `VideoSpec` and `PoseConfig` dataclasses to centralize shared parameters; added `io.ingest.probe_video` to wrap `ffprobe` (rotation, fps, width/height, duration, optional frame count) and `iter_expected_timestamps` to map frames to timestamps. Added unit tests that mock `ffprobe` output and verify timestamp math.
+- **Example check:** `python -m unittest tests.test_ingest` exercises the mocked ffprobe path and timestamp iterator, confirming a 10s 23.976 fps clip reports 240 frames, 90° rotation, and timestamps `[0.0, 1/30, 2/30]` when `frame_count=3`.
+- **Achieved:** We now have metadata structures and helpers ready for rotation-aware normalization and future frame decoding without touching the heavier vision stack yet.
+- **Next step:** Implement rotation normalization utilities and a frame iterator contract that respects the probed metadata, then thread `VideoSpec` through the rest of the pipeline.
 ## Next steps
 1. Implement `io/ingest.py` with ffprobe helpers (rotation, fps, duration) and a timestamped frame iterator contract.
 2. Define data models in `config.py` (e.g., VideoSpec, PoseConfig) and shared types.
