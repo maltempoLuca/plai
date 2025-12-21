@@ -191,6 +191,25 @@ class IngestTests(unittest.TestCase):
         self.assertTrue(fake_proc.killed)
         self.assertTrue(fake_proc.communicated)
 
+    def test_iter_normalized_frames_rotates_output_from_ffmpeg_iterator(self) -> None:
+        spec = VideoSpec(
+            path=Path("dummy.mp4"),
+            width=2,
+            height=1,
+            rotation=90,
+            fps=2.0,
+            duration=1.0,
+            frame_count=1,
+        )
+
+        fake_frames = [(0, 0.0, [[1, 2]])]
+        with mock.patch.object(
+            ingest, "iter_frames_via_ffmpeg", return_value=iter(fake_frames)
+        ):
+            normalized = list(ingest.iter_normalized_frames(spec))
+
+        self.assertEqual(normalized, [(0, 0.0, [[2], [1]])])
+
 
 if __name__ == "__main__":  # pragma: no cover - manual invocation helper
     unittest.main()

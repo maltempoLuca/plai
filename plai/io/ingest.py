@@ -321,3 +321,25 @@ def iter_frames_via_ffmpeg(
         process.stdout.close()
         process.kill()
         process.communicate()
+
+
+def iter_normalized_frames(
+    spec: VideoSpec,
+    *,
+    pixel_format: str = "rgb24",
+    max_frames: Optional[int] = None,
+) -> Iterator[Tuple[int, float, Any]]:
+    """Decode frames via ffmpeg and yield them in upright orientation.
+
+    This combines `iter_frames_via_ffmpeg` with rotation normalization so
+    consumers receive upright frames without re-implementing rotation logic.
+    """
+
+    transform = RotationTransform.from_video_spec(spec)
+    rotation = transform.rotation
+
+    for idx, ts, frame in iter_frames_via_ffmpeg(
+        spec, pixel_format=pixel_format, max_frames=max_frames
+    ):
+        output_frame = _rotate_frame(frame, rotation) if rotation else frame
+        yield idx, ts, output_frame

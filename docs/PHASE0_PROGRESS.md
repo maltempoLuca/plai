@@ -31,8 +31,8 @@ This log tracks incremental Phase 0 work. Each entry records what changed, why, 
 
 ### 2025-12-21 — Frame iterator scaffold
 - **Why:** We need a timestamp-aware frame iterator that honors rotation metadata so pose and overlay steps consume upright frames with consistent timing.
-- **What:** Added `iter_frames_from_supplier` to pair provided frames with timestamps from `VideoSpec`, optionally applying rotation via `RotationTransform`; `iter_expected_timestamps` remains for synthetic timing checks. Included a helper `_rotate_frame` that rotates nested sequences without extra dependencies. Added an ffmpeg-backed iterator scaffold (`iter_frames_via_ffmpeg`) with lazy numpy import and command builder.
-- **Example check:** `python -m unittest tests.test_ingest` now covers rotated frames supplied as 2x1 nested lists to verify 90° normalization/timestamp mapping and mocks ffmpeg + numpy to exercise the decode path and error messaging when numpy is absent.
+- **What:** Added `iter_frames_from_supplier` to pair provided frames with timestamps from `VideoSpec`, optionally applying rotation via `RotationTransform`; `iter_expected_timestamps` remains for synthetic timing checks. Included a helper `_rotate_frame` that rotates nested sequences without extra dependencies. Added an ffmpeg-backed iterator scaffold (`iter_frames_via_ffmpeg`) with lazy numpy import and command builder, plus `iter_normalized_frames` to decode-and-rotate in one step.
+- **Example check:** `python -m unittest tests.test_ingest` now covers rotated frames supplied as 2x1 nested lists to verify 90° normalization/timestamp mapping, mocks ffmpeg + numpy to exercise the decode path and error messaging when numpy is absent, and checks `iter_normalized_frames` rotation on mocked ffmpeg output.
 - **Achieved:** We can iterate decoded frames (supplied externally or via ffmpeg) with correct timestamps and normalized orientation, ready to plug in OpenCV/ffmpeg decoding in a later step.
 - **Next step:** Thread normalization through pose extraction and overlay mapping, add real decode wiring when dependencies are available, and build small end-to-end smoke tests.
 
@@ -43,11 +43,9 @@ This log tracks incremental Phase 0 work. Each entry records what changed, why, 
 - **Achieved:** We now have a reusable cache format ready for the upcoming pose wrapper, enabling repeatable runs and easy inspection during tuning.
 - **Next step:** Implement the pose extraction wrapper to populate the cache using the frame iterator + normalization helpers, then propagate cached outputs into signals/rep detection.
 ## Next steps
-1. Implement `io/ingest.py` with ffprobe helpers (rotation, fps, duration) and a timestamped frame iterator contract.
-2. Define data models in `config.py` (e.g., VideoSpec, PoseConfig) and shared types.
-3. Add MediaPipe Pose wrapper and caching scaffolding (`vision/keypoints.py`, `vision/cache.py`), documenting cache format.
-4. Begin signals module stubs (`signals/kinematics.py`, `signals/smoothing.py`, `signals/quality.py`) with interfaces and minimal tests.
-5. Wire a minimal CLI shape (`plai/cli.py`) that will later call the analysis pipeline.
+1. Add MediaPipe Pose wrapper and connect it to the JSONL pose cache + frame iterator.
+2. Begin signals module stubs (`signals/kinematics.py`, `signals/smoothing.py`, `signals/quality.py`) with interfaces and minimal tests.
+3. Wire a minimal CLI shape (`plai/cli.py`) that will later call the analysis pipeline.
 
 ## Notes
 - Dependencies will be added gradually as implementations land to avoid pinning unused packages prematurely.
