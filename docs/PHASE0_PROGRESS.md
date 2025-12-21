@@ -21,6 +21,13 @@ This log tracks incremental Phase 0 work. Each entry records what changed, why, 
 - **Example check:** `python -m unittest tests.test_ingest` exercises the mocked ffprobe path and timestamp iterator, confirming a 10s 23.976 fps clip reports 240 frames, 90° rotation, and timestamps `[0.0, 1/30, 2/30]` when `frame_count=3`.
 - **Achieved:** We now have metadata structures and helpers ready for rotation-aware normalization and future frame decoding without touching the heavier vision stack yet.
 - **Next step:** Implement rotation normalization utilities and a frame iterator contract that respects the probed metadata, then thread `VideoSpec` through the rest of the pipeline.
+
+### 2025-12-21 — Rotation normalization utilities
+- **Why:** Downstream analysis (pose, overlays) needs upright coordinates regardless of source orientation while still mapping results back for FFmpeg composition.
+- **What:** Added `RotationTransform` in `io.normalization` to convert points between original and normalized orientations, handling 0/90/180/270° rotations and exposing normalized dimensions. Included unit tests that round-trip points and validate dimension swaps plus error handling for unsupported angles.
+- **Example check:** `python -m unittest tests.test_normalization` confirms a 1920x1080 clip with 90° rotation swaps to 1080x1920 in normalized space and that point mappings round-trip for 90°/270° cases.
+- **Achieved:** We can now reason about upright coordinates independently of video metadata, setting up the upcoming frame iterator to deliver normalized frames and mapping overlays back to raw orientation.
+- **Next step:** Implement the frame iterator that decodes frames respecting rotation and uses `RotationTransform`, then propagate `VideoSpec`/transform through pose and overlay modules.
 ## Next steps
 1. Implement `io/ingest.py` with ffprobe helpers (rotation, fps, duration) and a timestamped frame iterator contract.
 2. Define data models in `config.py` (e.g., VideoSpec, PoseConfig) and shared types.
