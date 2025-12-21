@@ -26,5 +26,6 @@ htmlcov/
 Thumbs.db
 
 # Build / output
+input/
 output/
 *.log
