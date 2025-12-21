@@ -2,6 +2,18 @@
 
 A Python helper that builds FFmpeg filtergraphs to align portrait powerlifting videos on a shared timeline. It stacks clips side-by-side, freezes the first frame until playback begins, and can optionally add labels and mix audio for clear comparisons.
 
+## Analysis roadmap
+
+We are adding a lifting-aware analysis layer that feeds timestamps and overlay specs into the existing FFmpeg compositor (rendering stays FFmpeg-only). Planning is documented in:
+
+- `docs/ROADMAP.md`: full multi-phase roadmap and architecture overview.
+- `docs/PHASE0.md`: detailed plan for the Phase 0 baseline (squat-focused, MediaPipe Pose + heuristics).
+
+Key choices for Phase 0:
+- **MediaPipe Pose** as the initial CPU-friendly pose backbone for fast iteration on personal clips.
+- **Pose + heuristic rep detection** for transparency and quick tuning, with room for later temporal models.
+- **JSON + overlay specifications** to keep analysis separate from FFmpeg rendering while enabling synced annotations.
+
 ## Features
 - Align multiple MP4 videos by providing per-clip sync timestamps.
 - Freeze first frames before playback to avoid blank slates.
