@@ -9,9 +9,10 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, Optional, Tuple
+from typing import Any, Dict, Iterable, Iterator, Optional, Sequence, Tuple
 
 from plai.config import VideoSpec
+from plai.io.normalization import RotationTransform
 
 FFPROBE_CMD = (
     "ffprobe",
@@ -172,3 +173,61 @@ def iter_expected_timestamps(
 
     for frame_idx in range(total_frames):
         yield frame_idx, spec.timestamp_for_frame(frame_idx)
+
+
+def _rotate_frame(frame: Sequence[Sequence[Any]], rotation: int) -> Sequence[Sequence[Any]]:
+    """Rotate a frame counter-clockwise by the provided rotation degrees.
+
+    This helper operates on nested sequences to avoid hard dependencies. When
+    rotation is 0 the input is returned unchanged. The return type mirrors the
+    input type best-effort; callers should treat it as a sequence of rows.
+    """
+
+    if rotation == 0:
+        return frame
+    if rotation not in {90, 180, 270}:
+        raise ValueError(f"Unsupported rotation for frame: {rotation}")
+
+    def rotate_90_ccw(mat: Sequence[Sequence[Any]]) -> list[list[Any]]:
+        rows = len(mat)
+        cols = len(mat[0]) if rows else 0
+        return [[mat[j][cols - 1 - i] for j in range(rows)] for i in range(cols)]
+
+    rotated = frame
+    times = rotation // 90
+    for _ in range(times):
+        rotated = rotate_90_ccw(rotated)
+    return rotated
+
+
+def iter_frames_from_supplier(
+    spec: VideoSpec,
+    frames: Iterable[Sequence[Sequence[Any]]],
+    *,
+    normalize: bool = True,
+    transform: Optional[RotationTransform] = None,
+    max_frames: Optional[int] = None,
+) -> Iterator[Tuple[int, float, Sequence[Sequence[Any]]]]:
+    """Yield frames with timestamps, optionally normalized to upright orientation.
+
+    This helper decouples decoding from iteration to keep dependencies light.
+    A later step can wire OpenCV/ffmpeg decoding into the `frames` iterable.
+
+    Args:
+        spec: Video metadata from `probe_video`.
+        frames: Iterable of decoded frames (numpy arrays in HxWxC, BGR or RGB).
+        normalize: If True, rotate frames to upright orientation using metadata.
+        transform: Optional precomputed `RotationTransform`; derived from `spec`
+            when not provided.
+        max_frames: Optional cap on yielded frames for quick spot checks.
+    """
+
+    rotation_transform = transform or RotationTransform.from_video_spec(spec)
+    rotation = rotation_transform.rotation if normalize else 0
+
+    for idx, frame in enumerate(frames):
+        if max_frames is not None and idx >= max_frames:
+            break
+        timestamp = spec.timestamp_for_frame(idx)
+        output_frame = _rotate_frame(frame, rotation) if rotation else frame
+        yield idx, timestamp, output_frame

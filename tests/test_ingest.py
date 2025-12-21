@@ -71,6 +71,29 @@ class IngestTests(unittest.TestCase):
         self.assertEqual(spec.frame_count, 240)
         self.assertAlmostEqual(spec.duration, 10.0)
 
+    def test_iter_frames_from_supplier_rotates_frames_and_timestamps(self) -> None:
+        spec = VideoSpec(
+            path=Path("dummy.mp4"),
+            width=2,
+            height=1,
+            rotation=90,
+            fps=2.0,
+            duration=1.0,
+            frame_count=2,
+        )
+
+        frames = [[[1, 2]], [[3, 4]]]
+        iterated = list(ingest.iter_frames_from_supplier(spec, frames))
+
+        self.assertEqual(len(iterated), 2)
+        (idx0, ts0, frame0), (idx1, ts1, frame1) = iterated
+        self.assertEqual(idx0, 0)
+        self.assertAlmostEqual(ts0, 0.0)
+        self.assertEqual(frame0, [[2], [1]])
+        self.assertEqual(idx1, 1)
+        self.assertAlmostEqual(ts1, 0.5)
+        self.assertEqual(frame1, [[4], [3]])
+
 
 if __name__ == "__main__":  # pragma: no cover - manual invocation helper
     unittest.main()

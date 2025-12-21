@@ -28,6 +28,13 @@ This log tracks incremental Phase 0 work. Each entry records what changed, why, 
 - **Example check:** `python -m unittest tests.test_normalization` confirms a 1920x1080 clip with 90° rotation swaps to 1080x1920 in normalized space and that point mappings round-trip for 90°/270° cases.
 - **Achieved:** We can now reason about upright coordinates independently of video metadata, setting up the upcoming frame iterator to deliver normalized frames and mapping overlays back to raw orientation.
 - **Next step:** Implement the frame iterator that decodes frames respecting rotation and uses `RotationTransform`, then propagate `VideoSpec`/transform through pose and overlay modules.
+
+### 2025-12-21 — Frame iterator scaffold
+- **Why:** We need a timestamp-aware frame iterator that honors rotation metadata so pose and overlay steps consume upright frames with consistent timing.
+- **What:** Added `iter_frames_from_supplier` to pair provided frames with timestamps from `VideoSpec`, optionally applying rotation via `RotationTransform`; `iter_expected_timestamps` remains for synthetic timing checks. Included a helper `_rotate_frame` that rotates nested sequences without extra dependencies.
+- **Example check:** `python -m unittest tests.test_ingest` now covers rotated frames supplied as 2x1 nested lists to verify 90° normalization and timestamp mapping.
+- **Achieved:** We can iterate decoded frames (supplied externally) with correct timestamps and normalized orientation, ready to plug in OpenCV/ffmpeg decoding in a later step.
+- **Next step:** Wire an actual decoder-backed frame supplier (OpenCV/ffmpeg) and thread normalization through pose extraction, then add small end-to-end smoke tests.
 ## Next steps
 1. Implement `io/ingest.py` with ffprobe helpers (rotation, fps, duration) and a timestamped frame iterator contract.
 2. Define data models in `config.py` (e.g., VideoSpec, PoseConfig) and shared types.
