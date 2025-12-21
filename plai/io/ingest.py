@@ -1,8 +1,7 @@
 """Video ingest and metadata helpers for baseline analysis.
 
-This module focuses on light-weight ffprobe wrappers and timestamp helpers.
-Frame decoding will be implemented in a later Phase 0 step.
-"""
+This module focuses on light-weight ffprobe wrappers, timestamp helpers, and a
+minimal ffmpeg-backed frame iterator scaffold (numpy-optional)."""
 
 from __future__ import annotations
 
@@ -90,6 +89,25 @@ def _select_video_stream(streams: Iterable[Dict]) -> Dict:
         if stream.get("codec_type") == "video":
             return stream
     raise FFprobeError("ffprobe output did not contain a video stream")
+
+
+def _bytes_per_pixel(pixel_format: str) -> int:
+    """Return bytes per pixel for a limited set of pixel formats."""
+    if pixel_format in {"rgb24", "bgr24"}:
+        return 3
+    raise ValueError(f"Unsupported pixel format: {pixel_format}")
+
+
+def _require_numpy():
+    """Import numpy lazily to avoid hard dependency when unused."""
+    try:
+        import numpy as np  # type: ignore
+    except ImportError as exc:  # pragma: no cover - environment dependent
+        raise ImportError(
+            "numpy is required for ffmpeg frame decoding. "
+            "Install numpy or supply frames via another iterator."
+        ) from exc
+    return np
 
 
 def probe_video(video_path: str | Path) -> VideoSpec:
@@ -231,3 +249,75 @@ def iter_frames_from_supplier(
         timestamp = spec.timestamp_for_frame(idx)
         output_frame = _rotate_frame(frame, rotation) if rotation else frame
         yield idx, timestamp, output_frame
+
+
+def _ffmpeg_decode_cmd(
+    video_path: Path,
+    width: int,
+    height: int,
+    *,
+    pixel_format: str = "rgb24",
+) -> list[str]:
+    """Build an ffmpeg command that outputs raw frames to stdout."""
+    return [
+        "ffmpeg",
+        "-v",
+        "error",
+        "-i",
+        str(video_path),
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        pixel_format,
+        "-s",
+        f"{width}x{height}",
+        "-an",
+        "-sn",
+        "-",
+    ]
+
+
+def iter_frames_via_ffmpeg(
+    spec: VideoSpec,
+    *,
+    pixel_format: str = "rgb24",
+    max_frames: Optional[int] = None,
+) -> Iterator[Tuple[int, float, Any]]:
+    """Decode frames with ffmpeg, yielding (index, timestamp, frame array).
+
+    Notes:
+        - Requires numpy; if unavailable, ImportError is raised with guidance.
+        - Rotation is not applied; pair with `iter_frames_from_supplier` to
+          normalize orientation when needed.
+    """
+
+    np = _require_numpy()
+    cmd = _ffmpeg_decode_cmd(spec.path, spec.width, spec.height, pixel_format=pixel_format)
+    bytes_per_pixel = _bytes_per_pixel(pixel_format)
+    frame_size = spec.width * spec.height * bytes_per_pixel
+
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        bufsize=10 * frame_size,
+    )
+
+    if process.stdout is None:
+        raise RuntimeError("Failed to open ffmpeg stdout for frame decoding.")
+
+    try:
+        for idx in range(spec.frame_count or int(round(spec.duration * spec.fps))):
+            if max_frames is not None and idx >= max_frames:
+                break
+            data = process.stdout.read(frame_size)
+            if not data or len(data) < frame_size:
+                break
+            frame = np.frombuffer(data, dtype=np.uint8).reshape(
+                (spec.height, spec.width, -1)
+            )
+            yield idx, spec.timestamp_for_frame(idx), frame
+    finally:
+        process.stdout.close()
+        process.kill()
+        process.communicate()

@@ -31,10 +31,10 @@ This log tracks incremental Phase 0 work. Each entry records what changed, why, 
 
 ### 2025-12-21 — Frame iterator scaffold
 - **Why:** We need a timestamp-aware frame iterator that honors rotation metadata so pose and overlay steps consume upright frames with consistent timing.
-- **What:** Added `iter_frames_from_supplier` to pair provided frames with timestamps from `VideoSpec`, optionally applying rotation via `RotationTransform`; `iter_expected_timestamps` remains for synthetic timing checks. Included a helper `_rotate_frame` that rotates nested sequences without extra dependencies.
-- **Example check:** `python -m unittest tests.test_ingest` now covers rotated frames supplied as 2x1 nested lists to verify 90° normalization and timestamp mapping.
-- **Achieved:** We can iterate decoded frames (supplied externally) with correct timestamps and normalized orientation, ready to plug in OpenCV/ffmpeg decoding in a later step.
-- **Next step:** Wire an actual decoder-backed frame supplier (OpenCV/ffmpeg) and thread normalization through pose extraction, then add small end-to-end smoke tests.
+- **What:** Added `iter_frames_from_supplier` to pair provided frames with timestamps from `VideoSpec`, optionally applying rotation via `RotationTransform`; `iter_expected_timestamps` remains for synthetic timing checks. Included a helper `_rotate_frame` that rotates nested sequences without extra dependencies. Added an ffmpeg-backed iterator scaffold (`iter_frames_via_ffmpeg`) with lazy numpy import and command builder.
+- **Example check:** `python -m unittest tests.test_ingest` now covers rotated frames supplied as 2x1 nested lists to verify 90° normalization/timestamp mapping and mocks ffmpeg + numpy to exercise the decode path and error messaging when numpy is absent.
+- **Achieved:** We can iterate decoded frames (supplied externally or via ffmpeg) with correct timestamps and normalized orientation, ready to plug in OpenCV/ffmpeg decoding in a later step.
+- **Next step:** Thread normalization through pose extraction and overlay mapping, add real decode wiring when dependencies are available, and build small end-to-end smoke tests.
 ## Next steps
 1. Implement `io/ingest.py` with ffprobe helpers (rotation, fps, duration) and a timestamped frame iterator contract.
 2. Define data models in `config.py` (e.g., VideoSpec, PoseConfig) and shared types.

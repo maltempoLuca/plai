@@ -94,6 +94,103 @@ class IngestTests(unittest.TestCase):
         self.assertAlmostEqual(ts1, 0.5)
         self.assertEqual(frame1, [[4], [3]])
 
+    def test_ffmpeg_decode_cmd_builds_expected_command(self) -> None:
+        cmd = ingest._ffmpeg_decode_cmd(Path("clip.mp4"), 640, 480, pixel_format="rgb24")
+        self.assertEqual(
+            cmd,
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-i",
+                "clip.mp4",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb24",
+                "-s",
+                "640x480",
+                "-an",
+                "-sn",
+                "-",
+            ],
+        )
+
+    def test_iter_frames_via_ffmpeg_raises_when_numpy_missing(self) -> None:
+        spec = VideoSpec(
+            path=Path("dummy.mp4"),
+            width=1,
+            height=1,
+            rotation=0,
+            fps=1.0,
+            duration=1.0,
+            frame_count=1,
+        )
+
+        with mock.patch.object(ingest, "_require_numpy", side_effect=ImportError("no np")):
+            with self.assertRaises(ImportError):
+                next(ingest.iter_frames_via_ffmpeg(spec))
+
+    def test_iter_frames_via_ffmpeg_decodes_with_fake_numpy(self) -> None:
+        class FakeArray:
+            def __init__(self, data: bytes) -> None:
+                self.data = data
+
+            def reshape(self, shape):
+                return ("reshaped", shape, self.data)
+
+        class FakeNumpy:
+            uint8 = "uint8"
+
+            def frombuffer(self, data: bytes, dtype):
+                return FakeArray(data)
+
+        class FakeStdout:
+            def __init__(self, payload: bytes) -> None:
+                self.payload = payload
+                self.reads = 0
+
+            def read(self, size: int) -> bytes:
+                if self.reads == 0:
+                    self.reads += 1
+                    return self.payload
+                return b""
+
+            def close(self) -> None:
+                pass
+
+        class FakeProcess:
+            def __init__(self, payload: bytes) -> None:
+                self.stdout = FakeStdout(payload)
+                self.killed = False
+                self.communicated = False
+
+            def kill(self) -> None:
+                self.killed = True
+
+            def communicate(self) -> tuple:
+                self.communicated = True
+                return (b"", b"")
+
+        spec = VideoSpec(
+            path=Path("dummy.mp4"),
+            width=1,
+            height=1,
+            rotation=0,
+            fps=1.0,
+            duration=1.0,
+            frame_count=1,
+        )
+
+        fake_proc = FakeProcess(b"\x00\x01\x02")
+        with mock.patch.object(ingest, "_require_numpy", return_value=FakeNumpy()):
+            with mock.patch.object(ingest.subprocess, "Popen", return_value=fake_proc):
+                frames = list(ingest.iter_frames_via_ffmpeg(spec))
+
+        self.assertEqual(frames, [(0, 0.0, ("reshaped", (1, 1, -1), b"\x00\x01\x02"))])
+        self.assertTrue(fake_proc.killed)
+        self.assertTrue(fake_proc.communicated)
+
 
 if __name__ == "__main__":  # pragma: no cover - manual invocation helper
     unittest.main()
