@@ -8,6 +8,7 @@ We are adding a lifting-aware analysis layer that feeds timestamps and overlay s
 
 - `docs/ROADMAP.md`: full multi-phase roadmap and architecture overview.
 - `docs/PHASE0.md`: detailed plan for the Phase 0 baseline (squat-focused, MediaPipe Pose + heuristics).
+- `docs/PHASE0_PROGRESS.md`: step-by-step Phase 0 progress log (what changed, next steps).
 
 Key choices for Phase 0:
 - **MediaPipe Pose** as the initial CPU-friendly pose backbone for fast iteration on personal clips.
