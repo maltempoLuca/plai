@@ -1,0 +1,17 @@
+[project]
+name = "plai"
+version = "0.0.0"
+description = "Powerlifting video analysis pipeline feeding FFmpeg-based composition."
+authors = [{ name = "Your Name", email = "you@example.com" }]
+requires-python = ">=3.10"
+readme = "README.md"
+license = { text = "MIT" }
+
+# Dependencies will be added incrementally as implementations land.
+dependencies = [
+    "numpy>=1.23",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
