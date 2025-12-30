@@ -13,12 +13,18 @@ This log tracks incremental Phase A work for the sync UI/API. Each entry notes w
 - Added initial FastAPI app (`api/app.py`) with a `/sync` route, request/response schemas, and placeholder service layer. The endpoint currently validates metadata and returns a stub response; file uploads and core integration will follow.
 - Documented the backend directory structure and how to run `uvicorn api.app:app --reload`.
 
-## Next steps
-- Wire multipart file uploads (videos) into the `/sync` route and persist them to temp storage.
-- Call `core/video_editor.py` from the service layer to perform the side-by-side render.
-- Add basic error handling and validation messages surfaced through the API response.
+### 2025-01-07 — Temp storage plan
+- Documented Phase A temp storage behavior in `PHASEA.md`, emphasizing per-job folders under `tmp/sync-jobs`, streaming uploads to disk, TTL-based cleanup, and a swappable storage abstraction for future S3 migration.
+
+### 2025-01-08 — Next-step alignment
+- Merged the duplicated “Next steps” sections into a single ordered list to clarify the execution order.
+- Identified the immediate action: wire multipart uploads into `/sync` and persist to temp storage, documenting progress as it starts and completes.
+
+### 2025-01-09 — Multipart uploads to temp storage
+- Wired `/sync` to accept multipart form data (`metadata` JSON + `files[]` uploads), validating the metadata and requiring at least one video.
+- Persisted uploads to per-job temp directories under `tmp/sync-jobs/{job_id}`, writing `job.json` with creation time and payload for TTL cleanup. Response now includes the job ID while processing remains pending.
 
 ## Next steps
-- Scaffold API and data contracts; wire `core/video_editor.py` into a synchronous handler.
-- Build the MVP frontend and hook it to the endpoint.
-- Add validation and error handling; document limits.
+1. Call `core/video_editor.py` from the service layer to perform the side-by-side render.
+2. Add validation and error handling (size/type/offset) and document limits in the API/Phase docs.
+3. Build the MVP frontend, hook it to the endpoint, and surface progress/errors.
