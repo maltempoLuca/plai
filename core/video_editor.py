@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
 from enum import Enum
-from ffmpeg_lib import (
+from core.ffmpeg_lib import (
     build_filter_complex,
     build_ffmpeg_cmd,
     format_fps_value,

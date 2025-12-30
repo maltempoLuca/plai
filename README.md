@@ -6,9 +6,9 @@ A Python helper that builds FFmpeg filtergraphs to align portrait powerlifting v
 
 We are adding a lifting-aware analysis layer that feeds timestamps and overlay specs into the existing FFmpeg compositor (rendering stays FFmpeg-only). Planning is documented in:
 
-- `docs/ROADMAP.md`: full multi-phase roadmap and architecture overview.
-- `docs/PHASE0.md`: detailed plan for the Phase 0 baseline (squat-focused, MediaPipe Pose + heuristics).
-- `docs/PHASE0_PROGRESS.md`: step-by-step Phase 0 progress log (what changed, next steps).
+- `docs/video-analysis/ROADMAP.md`: full multi-phase roadmap and architecture overview.
+- `docs/video-analysis/PHASE0.md`: detailed plan for the Phase 0 baseline (squat-focused, MediaPipe Pose + heuristics).
+- `docs/video-analysis/PHASE0_PROGRESS.md`: step-by-step Phase 0 progress log (what changed, next steps).
 
 Key choices for Phase 0:
 - **MediaPipe Pose** as the initial CPU-friendly pose backbone for fast iteration on personal clips.
@@ -25,11 +25,16 @@ Key choices for Phase 0:
 
 ## Requirements
 - Python 3.8+.
-- FFmpeg and FFprobe available on your PATH (or update `FFMPEG_EXE` / `FFPROBE_EXE` in `video_editor.py`).
+- FFmpeg and FFprobe available on your PATH (or update `FFMPEG_EXE` / `FFPROBE_EXE` in `core/video_editor.py`).
 
 ## Project layout
-- `video_editor.py` — core logic for probing media, building filtergraphs, and running FFmpeg.
-- `main.py` — entry point that forwards CLI arguments to the editor logic; includes PyCharm-friendly defaults.
+- `core/` — core Python modules:
+  - `core/video_editor.py` — probing media, building filtergraphs, and running FFmpeg.
+  - `core/ffmpeg_lib.py` — shared FFmpeg helpers.
+  - `core/cli.py` — CLI defaults and request builder.
+- `main.py` — thin wrapper entry point that delegates to `core/cli.py`.
+- `api/` — FastAPI backend home (wrapper around the core logic).
+- `frontend/angular/` — Angular SPA project home for the upload/sync UI.
 
 ## Usage
 From the repository root:
@@ -47,10 +52,10 @@ Key flags:
 - `--audio` supports `none`, `mix`, or `videoN` (e.g., `video1`).
 
 ### PyCharm defaults
-When launched from PyCharm with no CLI arguments, `main.py` uses the `PYCHARM_DEFAULTS` defined in `video_editor.py`. Set `INTERACTIVE_PROMPT = True` there to build arguments interactively inside the IDE.
+When launched from PyCharm with no CLI arguments, `main.py` uses the `PYCHARM_DEFAULTS` defined in `core/video_editor.py`. Set `INTERACTIVE_PROMPT = True` there to build arguments interactively inside the IDE.
 
 ## Development
-- Core CLI parsing lives in `video_editor.py` (see `run_cli`).
+- Core CLI parsing lives in `core/video_editor.py` (see `run_cli`).
 - `main.py` is a thin wrapper so alternative entry points can import and reuse the editing functions without duplicating logic.
 
 Feel free to adjust `PYCHARM_DEFAULTS` to match your typical comparison workflow.

@@ -1,6 +1,6 @@
-# Powerlifting Video Analysis Roadmap
+# Roadmap — Video Analysis
 
-This roadmap captures the end-to-end plan for a lifting-aware analysis stack that plugs into the existing FFmpeg-based compositor. It is organized for incremental delivery with clear scope and acceptance criteria per phase.
+This roadmap captures the end-to-end plan for a lifting-aware analysis stack that plugs into the existing FFmpeg-based compositor. It is organized for incremental delivery with clear scope and acceptance criteria per phase. See `../ui-api/ROADMAP.md` for the separate sync UI/API effort.
 
 ## System Overview
 
@@ -64,4 +64,3 @@ This roadmap captures the end-to-end plan for a lifting-aware analysis stack tha
 ### Phase 2 — Advanced features
 - **Scope:** phase labeling for all lifts; multiple auto-sync strategies; richer overlays (rep counter, phase labels); stronger bar/object detection.
 - **Acceptance:** phase IoU ≥0.7; sync within ±150 ms across diverse clips; stable JSON + overlay outputs.
-

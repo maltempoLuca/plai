@@ -1,4 +1,4 @@
-# Phase 0: Baseline Implementation Plan
+# Phase 0: Video Analysis Baseline Implementation Plan
 
 Goal: deliver a squat-focused baseline that works on personal clips, outputs machine-readable events, and integrates with the existing FFmpeg compositor without changing the FFmpeg-driven rendering.
 
@@ -42,4 +42,3 @@ Goal: deliver a squat-focused baseline that works on personal clips, outputs mac
 - Primary angles: side or ~45°; portrait 30–60 fps; single lifter, spotter may occlude at bottom.
 - CPU-only environment is acceptable; GPU support optional but not required for Phase 0.
 - FFmpeg composition remains unchanged; only filtergraph specs and sync offsets are added.
-
