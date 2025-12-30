@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 
 from api.routes import sync as sync_routes
 
@@ -12,6 +13,11 @@ def create_app() -> FastAPI:
         version="0.1.0",
     )
     app.include_router(sync_routes.router)
+
+    @app.get("/", include_in_schema=False)
+    async def redirect_to_docs() -> RedirectResponse:
+        return RedirectResponse(url="/docs")
+
     return app
 
 
