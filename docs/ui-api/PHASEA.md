@@ -42,3 +42,9 @@ Until we introduce an object store (e.g., S3 in Phase C), uploads and outputs li
 - **Ephemeral lifetime:** mark the job directory with a creation timestamp and delete it after a short TTL (e.g., 4–6 hours) or immediately after the client fetches the output. Do not treat this as durable storage—files are **not** kept beyond the TTL.
 - **Cleanup:** provide a best-effort background sweeper on startup or per-request to prune expired job folders. In constrained environments, also support an on-demand `python -m api.scripts.cleanup_temp` helper to purge old artifacts.
 - **Future swap:** the directory abstraction should be behind a small storage service so we can swap local temp for S3 later without touching the route handler.
+
+## Validation limits (Phase A)
+- Max files per job: 4.
+- Max file size: 512 MiB each.
+- Allowed video MIME types: `video/mp4`, `video/quicktime`, `video/x-matroska`, `video/webm`.
+- Start offsets: finite numbers ≥ 0; one offset per file.

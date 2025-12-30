@@ -1,3 +1,4 @@
+import math
 from enum import Enum
 from typing import List, Optional, Union
 
@@ -16,7 +17,7 @@ class SyncRequest(BaseModel):
     """
     Request payload validated via Pydantic (preferred here over a bare dataclass for parsing and OpenAPI docs).
     """
-    starts: conlist(float, min_items=1) = Field(..., description="Per-video start offsets (seconds).")
+    starts: conlist(float, min_items=1) = Field(..., description="Per-video start offsets (seconds, >= 0).")
     labels: Optional[List[Optional[str]]] = Field(None, description="Optional labels for each video tile.")
     audio: AudioSelection = Field(
         AudioMode.NONE,
@@ -25,6 +26,12 @@ class SyncRequest(BaseModel):
     fps: Optional[float] = Field(None, description="Optional output fps; defaults to derived value.")
     height: Optional[int] = Field(None, description="Optional per-tile height; defaults to core value.")
     overwrite: bool = Field(False, description="Allow overwriting an existing output file.")
+
+    @validator("starts")
+    def starts_are_finite(cls, v: List[float]) -> List[float]:
+        if any(math.isnan(x) or math.isinf(x) or x < 0 for x in v):
+            raise ValueError("all start offsets must be finite numbers >= 0")
+        return v
 
     @validator("labels")
     def labels_len_matches(cls, v: Optional[List[Optional[str]]], values: dict) -> Optional[List[Optional[str]]]:
@@ -49,6 +56,18 @@ class SyncRequest(BaseModel):
             return v
 
         raise ValueError("audio must be 'none', 'mix', or a positive integer selecting the video track")
+
+    @validator("fps")
+    def fps_positive(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and v <= 0:
+            raise ValueError("fps must be positive if provided")
+        return v
+
+    @validator("height")
+    def height_positive(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v <= 0:
+            raise ValueError("height must be a positive integer if provided")
+        return v
 
 
 class SyncResponse(BaseModel):

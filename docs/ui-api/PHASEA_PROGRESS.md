@@ -28,6 +28,9 @@ This log tracks incremental Phase A work for the sync UI/API. Each entry notes w
 - After persisting uploads, the service now calls `core/video_editor.py` to render a side-by-side `output.mp4` within the job folder.
 - Audio selection supports `none`, `mix`, or a 1-based clip index; the rendered job completes synchronously and returns `status="completed"`.
 
+### 2025-01-11 — Validation limits
+- Added server-side validation for file count (≤ 4), per-file size (≤ 512 MiB), and MIME types (`video/mp4`, `video/quicktime`, `video/x-matroska`, `video/webm`).
+- Start offsets must be finite and ≥ 0; failures now return HTTP 400 with clear messages.
+
 ## Next steps
-1. Add validation and error handling (size/type/offset) and document limits in the API/Phase docs.
-2. Build the MVP frontend, hook it to the endpoint, and surface progress/errors.
+1. Build the MVP frontend, hook it to the endpoint, and surface progress/errors.
