@@ -4,7 +4,7 @@ Goal: deliver a minimal **FastAPI** backend and **Angular SPA** frontend that up
 
 ## Objectives
 - Accept N video uploads with validation on size/format.
-- Collect per-video start offsets and audio selection (single source or mix).
+- Collect per-video start offsets and audio selection (single source by 1-based index or mix).
 - Invoke `core/video_editor.py` with requested offsets/audio mode to produce side-by-side output.
 - Provide a synchronous response path with a download endpoint for the rendered file.
 - Offer basic frontend form with multi-file input, offsets, audio selector, submit, and progress state.
@@ -32,3 +32,24 @@ Goal: deliver a minimal **FastAPI** backend and **Angular SPA** frontend that up
 - Synchronous path only (async queue deferred to Phase B).
 - Temp storage on local disk; no object storage yet.
 - Minimal auth (if any) for initial demo; rate limiting deferred.
+
+## Temp storage handling (Phase A)
+
+Until we introduce an object store (e.g., S3 in Phase C), uploads and outputs live in short-lived local temp storage. The MVP flow should adhere to these rules:
+
+- **Root structure:** create a job-scoped directory per request under `./tmp/sync-jobs/{job_id}` (or a configured `TEMP_ROOT`). Store uploads as `source_{index}.<ext>` and the rendered result as `output.mp4` inside the same folder.
+- **Write path:** accept multipart uploads, stream them to disk without loading the whole file into memory, and fsync once each file lands. Reject if the directory would exceed size limits.
+- **Ephemeral lifetime:** mark the job directory with a creation timestamp and delete it after a short TTL (e.g., 4–6 hours) or immediately after the client fetches the output. Do not treat this as durable storage—files are **not** kept beyond the TTL.
+- **Cleanup:** provide a best-effort background sweeper on startup or per-request to prune expired job folders. In constrained environments, also support an on-demand `python -m api.scripts.cleanup_temp` helper to purge old artifacts.
+- **Future swap:** the directory abstraction should be behind a small storage service so we can swap local temp for S3 later without touching the route handler.
+
+## Validation limits (Phase A)
+- Max files per job: 4.
+- Max file size: 50 MiB each.
+- Allowed video MIME types: `video/mp4`, `video/quicktime`, `video/x-matroska`, `video/webm`.
+- Start offsets: finite numbers ≥ 0; one offset per file.
+
+## Bonus phase — Temp cleanup implementation
+- Current gap: no automated cleanup exists for `tmp/sync-jobs`, so job folders accumulate until manually removed.
+- Closure task: add a TTL-based sweeper (on startup or scheduled) and an on-demand CLI (e.g., `python -m api.scripts.cleanup_temp`) to delete expired job directories.
+- Optional approach: allow pluggable storage backends (local/S3) with a shared interface so cleanup strategies can be swapped without changing route handlers.
