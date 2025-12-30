@@ -24,7 +24,10 @@ This log tracks incremental Phase A work for the sync UI/API. Each entry notes w
 - Wired `/sync` to accept multipart form data (`metadata` JSON + `files[]` uploads), validating the metadata and requiring at least one video.
 - Persisted uploads to per-job temp directories under `tmp/sync-jobs/{job_id}`, writing `job.json` with creation time and payload for TTL cleanup. Response now includes the job ID while processing remains pending.
 
+### 2025-01-10 — Core render integration
+- After persisting uploads, the service now calls `core/video_editor.py` to render a side-by-side `output.mp4` within the job folder.
+- Audio selection supports `none`, `mix`, or a 1-based clip index; the rendered job completes synchronously and returns `status="completed"`.
+
 ## Next steps
-1. Call `core/video_editor.py` from the service layer to perform the side-by-side render.
-2. Add validation and error handling (size/type/offset) and document limits in the API/Phase docs.
-3. Build the MVP frontend, hook it to the endpoint, and surface progress/errors.
+1. Add validation and error handling (size/type/offset) and document limits in the API/Phase docs.
+2. Build the MVP frontend, hook it to the endpoint, and surface progress/errors.

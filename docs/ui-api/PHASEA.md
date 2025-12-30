@@ -4,7 +4,7 @@ Goal: deliver a minimal **FastAPI** backend and **Angular SPA** frontend that up
 
 ## Objectives
 - Accept N video uploads with validation on size/format.
-- Collect per-video start offsets and audio selection (single source or mix).
+- Collect per-video start offsets and audio selection (single source by 1-based index or mix).
 - Invoke `core/video_editor.py` with requested offsets/audio mode to produce side-by-side output.
 - Provide a synchronous response path with a download endpoint for the rendered file.
 - Offer basic frontend form with multi-file input, offsets, audio selector, submit, and progress state.
