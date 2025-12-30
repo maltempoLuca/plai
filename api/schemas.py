@@ -2,7 +2,7 @@ import math
 from enum import Enum
 from typing import List, Optional, Union
 
-from pydantic import BaseModel, Field, conint, conlist, validator
+from pydantic import BaseModel, Field, FieldValidationInfo, conint, conlist, field_validator
 
 
 class AudioMode(str, Enum):
@@ -27,20 +27,23 @@ class SyncRequest(BaseModel):
     height: Optional[int] = Field(None, description="Optional per-tile height; defaults to core value.")
     overwrite: bool = Field(False, description="Allow overwriting an existing output file.")
 
-    @validator("starts")
+    @field_validator("starts")
     def starts_are_finite(cls, v: List[float]) -> List[float]:
         if any(math.isnan(x) or math.isinf(x) or x < 0 for x in v):
             raise ValueError("all start offsets must be finite numbers >= 0")
         return v
 
-    @validator("labels")
-    def labels_len_matches(cls, v: Optional[List[Optional[str]]], values: dict) -> Optional[List[Optional[str]]]:
-        if v is not None and "starts" in values and len(v) not in (0, len(values["starts"])):
+    @field_validator("labels")
+    def labels_len_matches(
+        cls, v: Optional[List[Optional[str]]], info: FieldValidationInfo
+    ) -> Optional[List[Optional[str]]]:
+        starts = info.data.get("starts")
+        if v is not None and starts is not None and len(v) not in (0, len(starts)):
             raise ValueError("labels must be empty or match the number of videos")
         return v
 
-    @validator("audio")
-    def audio_valid(cls, v: AudioSelection, values: dict) -> AudioSelection:
+    @field_validator("audio")
+    def audio_valid(cls, v: AudioSelection, info: FieldValidationInfo) -> AudioSelection:
         if isinstance(v, str):
             normalized = v.lower()
             if normalized not in (AudioMode.NONE.value, AudioMode.MIX.value):
@@ -50,20 +53,20 @@ class SyncRequest(BaseModel):
         if isinstance(v, int):
             if v < 1:
                 raise ValueError("audio track index must be >= 1")
-            starts = values.get("starts")
+            starts = info.data.get("starts")
             if starts is not None and v > len(starts):
                 raise ValueError("audio track index cannot exceed the number of videos")
             return v
 
         raise ValueError("audio must be 'none', 'mix', or a positive integer selecting the video track")
 
-    @validator("fps")
+    @field_validator("fps")
     def fps_positive(cls, v: Optional[float]) -> Optional[float]:
         if v is not None and v <= 0:
             raise ValueError("fps must be positive if provided")
         return v
 
-    @validator("height")
+    @field_validator("height")
     def height_positive(cls, v: Optional[int]) -> Optional[int]:
         if v is not None and v <= 0:
             raise ValueError("height must be a positive integer if provided")
