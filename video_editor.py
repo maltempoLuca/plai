@@ -2,25 +2,74 @@
 """
 Video editing pipeline for powerlifting video analysis.
 
-Provides utilities to align multiple portrait MP4 clips on a shared timeline,
-freeze starting frames, draw optional labels, and export a side-by-side
-comparison via FFmpeg.
+Aligns multiple portrait MP4 clips on a shared timeline, freezes starting frames,
+draws optional labels, and exports a side-by-side comparison via FFmpeg.
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 import math
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
+from enum import Enum
+from ffmpeg_lib import (
+    build_filter_complex,
+    build_ffmpeg_cmd,
+    format_fps_value,
+)
 
 FFMPEG_EXE = r"C:\ffmpeg\bin\ffmpeg.exe"
 FFPROBE_EXE = r"C:\ffmpeg\bin\ffprobe.exe"
+
+class StartMode(str, Enum):
+    """Defines how `starts[]` values are interpreted."""
+    SYNC = "sync"
+    TIMELINE = "timeline"
+
+
+@dataclass(frozen=True)
+class SideBySideComparisonRequest:
+    """
+    Defines a side-by-side comparison render job.
+
+    Attributes:
+        videos: Input MP4 paths in left-to-right order.
+        starts: Per-video start values. Meaning depends on `start_mode`:
+            - "sync": each value is an in-clip timestamp (seconds) that should align across videos.
+            - "timeline": each value is the absolute timeline start time (seconds) for the clip.
+        start_mode: "sync" (default) or "timeline".
+        labels: Optional per-video labels. Provide None for no labels, or a list of length N (use ""/None to skip).
+        output: Output MP4 path.
+
+        height: Output height (per tile) before stacking.
+        fps: Output fps. If None, derived from inputs (or defaults to 30).
+        audio: "none" | "mix" | "videoN" (1-based).
+        font: Optional font file path for drawtext.
+        crf: libx264 CRF.
+        preset: libx264 preset.
+        overwrite: Overwrite output file if exists.
+        print_ffmpeg_cmd: Print ffmpeg command + filtergraph before running.
+    """
+    videos: List[str] = field(default_factory=list)
+    starts: List[float] = field(default_factory=list)
+
+    start_mode: StartMode = StartMode.SYNC
+    labels: Optional[List[Optional[str]]] = None
+    output: str = ""
+
+    height: int = 1080
+    fps: Optional[float] = None
+    audio: str = "none"
+    font: Optional[str] = None
+    crf: int = 20
+    preset: str = "medium"
+    overwrite: bool = False
+    print_ffmpeg_cmd: bool = False
 
 
 @dataclass(frozen=True)
@@ -211,238 +260,64 @@ def parse_audio_mode(audio: str, num_inputs: int) -> Tuple[str, Optional[int]]:
     raise ValueError("Invalid --audio value. Use: none | mix | videoN (e.g., video1, video3).")
 
 
-def compute_timeline_starts(starts: List[float], start_mode: str) -> Tuple[List[float], float]:
-    if start_mode == "timeline":
-        return list(starts), 0.0
+def compute_timeline_starts(starts: List[float], start_mode: StartMode) -> Tuple[List[float], float]:
+    match start_mode:
+        case StartMode.TIMELINE:
+            return list(starts), 0.0
 
-    t_sync = max(starts)
-    timeline_starts = [t_sync - s for s in starts]
-    return timeline_starts, t_sync
+        case StartMode.SYNC:
+            t_sync = max(starts)
+            timeline_starts = [t_sync - s for s in starts]
+            return timeline_starts, t_sync
 
-
-def build_filter_complex(
-    height: int,
-    fps_str: str,
-    timeline_starts: List[float],
-    total: float,
-    labels: List[Optional[str]],
-    fontfile: Optional[str],
-    audio: str,
-    has_audio: List[bool],
-) -> Tuple[str, bool]:
-    n = len(timeline_starts)
-    parts: List[str] = []
-
-    def video_chain(idx: int, start: float, label: Optional[str]) -> str:
-        out_label = f"v{idx}"
-        chain = (
-            f"[{idx}:v]"
-            f"setpts=PTS-STARTPTS,"
-            f"scale=-2:{height},"
-            f"format=yuv420p,"
-            f"setsar=1"
-        )
-
-        if label and label.strip():
-            chain += f",{build_drawtext_filter(label.strip(), height, fontfile)}"
-
-        chain += (
-            f",tpad=start_duration={fmt_time(start)}:start_mode=clone:"
-            f"stop_duration={fmt_time(total)}:stop_mode=clone"
-            f",trim=duration={fmt_time(total)},setpts=PTS-STARTPTS"
-            f"[{out_label}]"
-        )
-        return chain
-
-    for i in range(n):
-        parts.append(video_chain(i, timeline_starts[i], labels[i]))
-
-    stack_inputs = "".join(f"[v{i}]" for i in range(n))
-    parts.append(f"{stack_inputs}hstack=inputs={n}:shortest=1[vstack]")
-    parts.append(f"[vstack]fps=fps={fps_str}[vout]")
-
-    mode, single_idx = parse_audio_mode(audio, n)
-    has_audio_out = False
-
-    def audio_chain(idx: int, delay_ms: int, out_label: str) -> str:
-        return (
-            f"[{idx}:a]"
-            f"aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
-            f"asetpts=PTS-STARTPTS,"
-            f"adelay=delays={delay_ms}:all=1"
-            f"[{out_label}]"
-        )
-
-    def finalize_audio(in_label: str) -> str:
-        return (
-            f"[{in_label}]"
-            f"apad=whole_dur={fmt_time(total)},"
-            f"atrim=start=0:end={fmt_time(total)},"
-            f"asetpts=PTS-STARTPTS"
-            f"[aout]"
-        )
-
-    if mode == "none":
-        return ";".join(parts), False
-
-    if mode == "single":
-        assert single_idx is not None
-        if not has_audio[single_idx]:
-            eprint(
-                f"Warning: requested audio from video{single_idx + 1}, but it has no audio stream. Output will be silent."
-            )
-            return ";".join(parts), False
-
-        delay_ms = int(round(timeline_starts[single_idx] * 1000.0))
-        parts.append(audio_chain(single_idx, delay_ms, "a1"))
-        parts.append(finalize_audio("a1"))
-        return ";".join(parts), True
-
-    audio_labels: List[str] = []
-    for i in range(n):
-        if not has_audio[i]:
-            continue
-        delay_ms = int(round(timeline_starts[i] * 1000.0))
-        lbl = f"a{i}"
-        parts.append(audio_chain(i, delay_ms, lbl))
-        audio_labels.append(lbl)
-
-    if not audio_labels:
-        eprint("Warning: --audio mix requested, but none of the inputs have audio. Output will be silent.")
-        return ";".join(parts), False
-
-    if len(audio_labels) == 1:
-        parts.append(finalize_audio(audio_labels[0]))
-        return ";".join(parts), True
-
-    mix_inputs = "".join(f"[{lbl}]" for lbl in audio_labels)
-    parts.append(
-        f"{mix_inputs}"
-        f"amix=inputs={len(audio_labels)}:duration=longest:dropout_transition=2"
-        f"[amixed]"
-    )
-    parts.append(finalize_audio("amixed"))
-    return ";".join(parts), True
+        case _:
+            raise ValueError(f"Unsupported start_mode: {start_mode!r}")
 
 
-def build_ffmpeg_cmd(
-    ffmpeg_bin: str,
-    videos: List[Path],
-    output: Path,
-    filter_complex: str,
-    total_duration: float,
-    crf: int,
-    preset: str,
-    include_audio: bool,
-    overwrite: bool,
-) -> List[str]:
-    cmd: List[str] = [ffmpeg_bin, "-hide_banner"]
-    cmd.append("-y" if overwrite else "-n")
+def validate_request(req: SideBySideComparisonRequest) -> None:
+    """
+    Validates a comparison request.
 
-    for v in videos:
-        cmd += ["-i", str(v)]
+    Args:
+        req: Job specification to validate.
 
-    cmd += ["-filter_complex", filter_complex]
-    cmd += ["-map", "[vout]"]
-
-    if include_audio:
-        cmd += ["-map", "[aout]", "-c:a", "aac", "-b:a", "192k"]
-    else:
-        cmd += ["-an"]
-
-    cmd += [
-        "-t",
-        fmt_time(total_duration),
-        "-c:v",
-        "libx264",
-        "-preset",
-        preset,
-        "-crf",
-        str(crf),
-        "-pix_fmt",
-        "yuv420p",
-        "-movflags",
-        "+faststart",
-        str(output),
-    ]
-    return cmd
-
-
-def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(
-        description="Compose N portrait MP4 videos side-by-side on a shared timeline (freeze first frame before start)."
-    )
-
-    p.add_argument("--video", action="append", dest="videos", default=[],
-                   help="Path to an input MP4. Provide multiple times, in left-to-right order.")
-    p.add_argument("--start", action="append", dest="starts", default=[], type=float,
-                   help="Start value per video. Meaning depends on --start_mode. Provide same count as --video.")
-
-    p.add_argument("--start_mode", choices=["sync", "timeline"], default="sync",
-                   help="sync (default): --start is the in-clip timestamp where clips should be aligned; "
-                        "timeline starts become max(starts)-start_i. "
-                        "timeline: --start is directly the timeline playback start time.")
-
-    p.add_argument("--label", action="append", dest="labels", default=None,
-                   help="Optional label for the corresponding --video. Provide 0 times OR exactly N times. "
-                        "Use empty string \"\" to skip a label for a specific video.")
-    p.add_argument("--output", required=True, help="Output MP4 path")
-
-    p.add_argument("--height", type=int, default=1080,
-                   help="Output height for each side before stacking (default: 1080)")
-    p.add_argument("--fps", type=float, default=None,
-                   help="Output fps (default: derived from inputs or 30)")
-    p.add_argument("--audio", default="none",
-                   help="Audio mode: none | mix | videoN (1-based), e.g. video1, video3 (default: none)")
-    p.add_argument("--font", default=None,
-                   help="Optional font file path for drawtext")
-    p.add_argument("--crf", type=int, default=20,
-                   help="libx264 CRF (default: 20)")
-    p.add_argument("--preset", default="medium",
-                   help="libx264 preset (default: medium)")
-    p.add_argument("--overwrite", action="store_true",
-                   help="Overwrite output file if it exists")
-    p.add_argument("--print_ffmpeg_cmd", action="store_true",
-                   help="Print the ffmpeg command + filtergraph before running (debugging)")
-
-    return p.parse_args(argv)
-
-
-def validate_args(args: argparse.Namespace) -> None:
-    if args.height <= 0:
+    Returns:
+        None. Raises an exception if the request is invalid.
+    """
+    if req.height <= 0:
         raise ValueError("--height must be a positive integer.")
-    if args.fps is not None and args.fps <= 0:
+    if req.fps is not None and req.fps <= 0:
         raise ValueError("--fps must be positive if provided.")
-    if args.crf < 0 or args.crf > 51:
+    if req.crf < 0 or req.crf > 51:
         raise ValueError("--crf must be between 0 and 51 for libx264.")
-    if args.font is not None and not Path(args.font).expanduser().exists():
-        raise FileNotFoundError(f"Font file not found: {args.font}")
+    if req.font is not None and not Path(req.font).expanduser().exists():
+        raise FileNotFoundError(f"Font file not found: {req.font}")
 
-    if not args.videos or not args.starts:
+    if not req.videos or not req.starts:
         raise ValueError("You must provide --video and --start (repeated), plus --output.")
-    if len(args.videos) < 2:
+    if len(req.videos) < 2:
         raise ValueError("Provide at least 2 videos for side-by-side output.")
-    if len(args.videos) != len(args.starts):
+    if len(req.videos) != len(req.starts):
         raise ValueError(
-            f"Count mismatch: got {len(args.videos)} --video but {len(args.starts)} --start.\n"
+            f"Count mismatch: got {len(req.videos)} --video but {len(req.starts)} --start.\n"
             f"Provide one --start for every --video, in the same order."
         )
 
-    for s in args.starts:
+    for s in req.starts:
         if math.isnan(s) or math.isinf(s):
             raise ValueError("All --start values must be finite numbers.")
         if s < 0:
             raise ValueError("All --start values must be >= 0 (they are timestamps in seconds).")
 
-    if args.labels is not None and len(args.labels) != len(args.videos):
+    if req.labels is not None and len(req.labels) != len(req.videos):
         raise ValueError(
-            f"Count mismatch: got {len(args.labels)} --label but {len(args.videos)} videos.\n"
+            f"Count mismatch: got {len(req.labels)} --label but {len(req.videos)} videos.\n"
             f"Provide 0 labels OR exactly one label per video.\n"
             f"Tip: use --label \"\" to skip a label for a specific video."
         )
 
-    out_path = Path(args.output).expanduser()
-    if out_path.exists() and not args.overwrite:
+    out_path = Path(req.output).expanduser()
+    if out_path.exists() and not req.overwrite:
         raise FileExistsError(
             f"Output file already exists: {out_path}\n"
             f"Use --overwrite to replace it, or choose a different --output path."
@@ -454,9 +329,28 @@ def validate_args(args: argparse.Namespace) -> None:
         )
 
 
-def run(args: argparse.Namespace) -> int:
+def export_side_by_side_comparison(req: SideBySideComparisonRequest) -> int:
+    """
+    Exports a side-by-side comparison video (MP4) using FFmpeg.
+
+    Alignment behavior:
+      - start_mode="sync": each `starts[i]` is a sync timestamp inside clip i. All sync moments align together.
+      - start_mode="timeline": each `starts[i]` is the absolute timeline start time for clip i.
+
+    Rendering behavior:
+      - Frames before a clip's timeline start are frozen (first frame cloned) until the clip begins.
+      - Optional per-clip labels can be drawn using drawtext.
+      - Output is stacked horizontally (hstack) and converted to a fixed output fps.
+
+    Args:
+        req: Render job definition (inputs, alignment, output path, encoding options).
+
+    Returns:
+        Exit code: 0 on success; non-zero on failure.
+        (On failure, the error is printed to stderr and 2 is returned.)
+    """
     try:
-        validate_args(args)
+        validate_request(req)
 
         ffmpeg_bin = FFMPEG_EXE if FFMPEG_EXE else require_tool("ffmpeg")
         ffprobe_bin = FFPROBE_EXE if FFPROBE_EXE else require_tool("ffprobe")
@@ -466,46 +360,46 @@ def run(args: argparse.Namespace) -> int:
         if not Path(ffprobe_bin).exists():
             raise RuntimeError(f"FFprobe not found at: {ffprobe_bin}")
 
-        video_paths = [Path(v).expanduser() for v in args.videos]
-        out_path = Path(args.output).expanduser()
+        video_paths = [Path(v).expanduser() for v in req.videos]
+        out_path = Path(req.output).expanduser()
 
         infos: List[MediaInfo] = [probe_media(p, ffprobe_bin) for p in video_paths]
 
-        if args.start_mode == "sync":
-            for i, (sync_t, info) in enumerate(zip(args.starts, infos), start=1):
+        if req.start_mode == "sync":
+            for i, (sync_t, info) in enumerate(zip(req.starts, infos), start=1):
                 if sync_t > info.duration + 0.25:
                     raise ValueError(
                         f"--start for video{i} is {sync_t:.3f}s but clip duration is {info.duration:.3f}s.\n"
                         f"In sync mode, --start must be inside the clip."
                     )
 
-        timeline_starts, t_sync = compute_timeline_starts(args.starts, args.start_mode)
-
+        timeline_starts, t_sync = compute_timeline_starts(req.starts, req.start_mode)
         total_duration = max(timeline_starts[i] + infos[i].duration for i in range(len(infos)))
 
-        if args.fps is not None:
-            fps_out = args.fps
+        if req.fps is not None:
+            fps_out = req.fps
         else:
             candidates = [mi.fps for mi in infos if mi.fps and mi.fps > 0]
             fps_out = max(candidates) if candidates else 30.0
         fps_str = format_fps_value(fps_out)
 
-        if args.labels is None:
+        if req.labels is None:
             labels = [None] * len(video_paths)
         else:
-            labels = [lbl for lbl in args.labels]
+            labels = [lbl for lbl in req.labels]
 
         has_audio_flags = [mi.has_audio for mi in infos]
 
         filter_complex, has_audio_out = build_filter_complex(
-            height=args.height,
+            height=req.height,
             fps_str=fps_str,
             timeline_starts=timeline_starts,
             total=total_duration,
             labels=labels,
-            fontfile=args.font,
-            audio=args.audio,
+            fontfile=req.font,
+            audio=req.audio,
             has_audio=has_audio_flags,
+            warn=eprint,
         )
 
         cmd = build_ffmpeg_cmd(
@@ -514,13 +408,13 @@ def run(args: argparse.Namespace) -> int:
             output=out_path,
             filter_complex=filter_complex,
             total_duration=total_duration,
-            crf=args.crf,
-            preset=args.preset,
+            crf=req.crf,
+            preset=req.preset,
             include_audio=has_audio_out,
-            overwrite=args.overwrite,
+            overwrite=req.overwrite,
         )
 
-        if args.print_ffmpeg_cmd:
+        if req.print_ffmpeg_cmd:
             eprint("FFmpeg command:")
             eprint(" ".join(cmd))
             eprint("\nFilter graph:")
@@ -532,7 +426,7 @@ def run(args: argparse.Namespace) -> int:
             return proc.returncode
 
         print(f"Done. Wrote: {out_path}")
-        if args.start_mode == "sync":
+        if req.start_mode == "sync":
             print(
                 f"Sync moment occurs at timeline t={t_sync:.3f}s. Timeline starts: {', '.join(f'{x:.3f}' for x in timeline_starts)}"
             )
@@ -541,76 +435,3 @@ def run(args: argparse.Namespace) -> int:
     except Exception as ex:
         eprint(f"Error: {ex}")
         return 2
-
-
-INTERACTIVE_PROMPT = False
-
-
-def _prompt(msg: str, default: Optional[str] = None) -> str:
-    if default is None:
-        return input(f"{msg}: ").strip()
-    v = input(f"{msg} [{default}]: ").strip()
-    return v if v else default
-
-
-def build_args_interactively() -> List[str]:
-    n_str = _prompt("How many videos?", "2")
-    if not n_str.isdigit() or int(n_str) < 2:
-        raise ValueError("Please enter an integer >= 2 for number of videos.")
-    n = int(n_str)
-
-    argv: List[str] = []
-    start_mode = _prompt("start_mode (sync|timeline)", "sync").strip().lower()
-    if start_mode not in ("sync", "timeline"):
-        raise ValueError("start_mode must be 'sync' or 'timeline'.")
-    argv += ["--start_mode", start_mode]
-
-    for i in range(n):
-        v = _prompt(f"video{i+1} path")
-        if start_mode == "sync":
-            s = _prompt(f"video{i+1} SYNC timestamp inside the clip (seconds)", "0")
-        else:
-            s = _prompt(f"video{i+1} timeline start time (seconds)", "0")
-        lbl = _prompt(f"video{i+1} label (empty = no label)", "")
-        argv += ["--video", v, "--start", s, "--label", lbl]
-
-    output = _prompt("output path")
-    argv += ["--output", output]
-
-    height = _prompt("height (optional)", "").strip()
-    if height:
-        argv += ["--height", height]
-
-    fps = _prompt("fps (optional)", "").strip()
-    if fps:
-        argv += ["--fps", fps]
-
-    audio = _prompt("audio mode: none|mix|videoN (optional)", "").strip()
-    if audio:
-        argv += ["--audio", audio]
-
-    font = _prompt("font file path (optional)", "").strip()
-    if font:
-        argv += ["--font", font]
-
-    crf = _prompt("crf (optional)", "").strip()
-    if crf:
-        argv += ["--crf", crf]
-
-    preset = _prompt("preset (optional)", "").strip()
-    if preset:
-        argv += ["--preset", preset]
-
-    overwrite = _prompt("overwrite? y/N (optional)", "N").strip().lower()
-    if overwrite in ("y", "yes"):
-        argv += ["--overwrite"]
-
-    return argv
-
-
-def run_cli(argv: Optional[List[str]] = None) -> int:
-    return run(parse_args(argv))
-
-
-if __name__ == "__main__":
-    raise SystemExit(run_cli())
