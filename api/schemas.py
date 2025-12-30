@@ -17,7 +17,7 @@ class SyncRequest(BaseModel):
     """
     Request payload validated via Pydantic (preferred here over a bare dataclass for parsing and OpenAPI docs).
     """
-    starts: conlist(float, min_items=1) = Field(..., description="Per-video start offsets (seconds, >= 0).")
+    starts: conlist(float, min_length=1) = Field(..., description="Per-video start offsets (seconds, >= 0).")
     labels: Optional[List[Optional[str]]] = Field(None, description="Optional labels for each video tile.")
     audio: AudioSelection = Field(
         AudioMode.NONE,
