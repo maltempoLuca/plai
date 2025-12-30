@@ -1,4 +1,4 @@
-# Phase 0 Progress Log
+# Phase 0 Progress Log — Video Analysis
 
 This log tracks incremental Phase 0 work. Each entry records what changed, why, and what comes next. The focus is documentation-first with code delivered in small steps.
 
