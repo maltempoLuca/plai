@@ -8,8 +8,11 @@ readme = "README.md"
 license = { text = "MIT" }
 
 # Dependencies will be added incrementally as implementations land.
-dependencies = []
-
+dependencies = [
+    "fastapi>=0.109.0,<0.112.0",
+    "uvicorn[standard]>=0.23.0,<0.30.0",
+    "pydantic>=2.5.0,<3.0.0",
+]
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
