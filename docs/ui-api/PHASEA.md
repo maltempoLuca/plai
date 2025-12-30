@@ -45,6 +45,11 @@ Until we introduce an object store (e.g., S3 in Phase C), uploads and outputs li
 
 ## Validation limits (Phase A)
 - Max files per job: 4.
-- Max file size: 512 MiB each.
+- Max file size: 50 MiB each.
 - Allowed video MIME types: `video/mp4`, `video/quicktime`, `video/x-matroska`, `video/webm`.
 - Start offsets: finite numbers ≥ 0; one offset per file.
+
+## Bonus phase — Temp cleanup implementation
+- Current gap: no automated cleanup exists for `tmp/sync-jobs`, so job folders accumulate until manually removed.
+- Closure task: add a TTL-based sweeper (on startup or scheduled) and an on-demand CLI (e.g., `python -m api.scripts.cleanup_temp`) to delete expired job directories.
+- Optional approach: allow pluggable storage backends (local/S3) with a shared interface so cleanup strategies can be swapped without changing route handlers.

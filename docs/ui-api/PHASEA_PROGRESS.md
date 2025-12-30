@@ -29,7 +29,7 @@ This log tracks incremental Phase A work for the sync UI/API. Each entry notes w
 - Audio selection supports `none`, `mix`, or a 1-based clip index; the rendered job completes synchronously and returns `status="completed"`.
 
 ### 2025-01-11 — Validation limits
-- Added server-side validation for file count (≤ 4), per-file size (≤ 512 MiB), and MIME types (`video/mp4`, `video/quicktime`, `video/x-matroska`, `video/webm`).
+- Added server-side validation for file count (≤ 4), per-file size (≤ 50 MiB), and MIME types (`video/mp4`, `video/quicktime`, `video/x-matroska`, `video/webm`).
 - Start offsets must be finite and ≥ 0; failures now return HTTP 400 with clear messages.
 
 ## Next steps

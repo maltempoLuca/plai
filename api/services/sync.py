@@ -24,7 +24,7 @@ from core.video_editor import (
 TEMP_ROOT = Path("tmp/sync-jobs")
 CHUNK_SIZE = 1024 * 1024  # 1 MiB
 MAX_FILES = 4
-MAX_FILE_BYTES = 512 * 1024 * 1024  # 512 MiB per file
+MAX_FILE_BYTES = 50 * 1024 * 1024  # 50 MiB per file
 ALLOWED_CONTENT_TYPES = {
     "video/mp4",
     "video/quicktime",
